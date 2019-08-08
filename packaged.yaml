@@ -1,0 +1,112 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'sam-app
+
+  Sample SAM Template for sam-app
+
+  '
+Globals:
+  Function:
+    Timeout: 20
+Outputs:
+  HelloWorldApi:
+    Description: API Gateway endpoint URL for Prod stage for Hello World function
+    Value:
+      Fn::Sub: https://${HelloWorldApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/
+  HelloWorldFunction:
+    Description: Hello World Lambda Function ARN
+    Value:
+      Fn::GetAtt:
+      - HelloWorldFunction
+      - Arn
+  HelloWorldFunctionIamRole:
+    Description: Implicit IAM Role created for Hello World function
+    Value:
+      Fn::GetAtt:
+      - HelloWorldFunctionRole
+      - Arn
+Resources:
+  BasePathMapping:
+    DependsOn:
+    - HelloWorldFunction
+    - HelloWorldApi
+    Properties:
+      DomainName:
+        Ref: DomainName
+      RestApiId:
+        Ref: HelloWorldApi
+      Stage: Prod
+    Type: AWS::ApiGateway::BasePathMapping
+  DomainName:
+    Properties:
+      DomainName: hello-world.nikmouz.dev
+      EndpointConfiguration:
+        Types:
+        - REGIONAL
+      RegionalCertificateArn: arn:aws:acm:eu-west-1:005405328181:certificate/c346f805-c3aa-462b-a483-909112c10d64
+    Type: AWS::ApiGateway::DomainName
+  HelloWorldApi:
+    Properties:
+      DefinitionBody:
+        info:
+          title: HelloWorld
+          version: '1.0'
+        paths:
+          /hello:
+            get:
+              responses: {}
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                responses:
+                  default:
+                    statusCode: 200
+                type: aws_proxy
+                uri:
+                  Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${HelloWorldFunction.Arn}/invocations
+        schemes:
+        - https
+        swagger: '2.0'
+        x-amazon-apigateway-policy:
+          Statement:
+          - Action: execute-api:Invoke
+            Condition:
+              IpAddress:
+                aws:SourceIp:
+                - 0.0.0.0
+            Effect: Allow
+            Principal: '*'
+            Resource:
+            - arn:aws:execute-api:*:*:*/*/GET/hello
+          Version: '2012-10-17'
+      StageName: Prod
+    Type: AWS::Serverless::Api
+  HelloWorldFunction:
+    Properties:
+      CodeUri: s3://sample-java-sam-output/672eb4148f58ae9ce84d1b32e8dadbe4
+      Events:
+        HelloWorld:
+          Properties:
+            Method: get
+            Path: /hello
+            RestApiId:
+              Ref: HelloWorldApi
+          Type: Api
+      Handler: helloworld.App::handleRequest
+      Runtime: java8
+    Type: AWS::Serverless::Function
+  WebsiteRecordSets:
+    Properties:
+      HostedZoneName: nikmouz.dev.
+      RecordSets:
+      - AliasTarget:
+          DNSName:
+            Fn::GetAtt:
+            - DomainName
+            - RegionalDomainName
+          HostedZoneId:
+            Fn::GetAtt:
+            - DomainName
+            - RegionalHostedZoneId
+        Name: hello-world.nikmouz.dev
+        Type: A
+    Type: AWS::Route53::RecordSetGroup
+Transform: AWS::Serverless-2016-10-31

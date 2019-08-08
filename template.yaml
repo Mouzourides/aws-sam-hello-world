@@ -1,77 +1,106 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Hello world app for AWS SAM
+Description: >
+  sam-app
 
+  Sample SAM Template for sam-app
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
   Function:
-    Timeout: 3
+    Timeout: 20
 
 Resources:
   HelloWorldFunction:
-    Type: AWS::Serverless::Function
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
-      CodeUri: hello-world/
-      Handler: app.lambdaHandler
-      Runtime: nodejs8.10
+      CodeUri: HelloWorldFunction
+      Handler: helloworld.App::handleRequest
+      Runtime: java8
       Events:
         HelloWorld:
-          Type: Api
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
           Properties:
             Path: /hello
+            RestApiId: !Ref HelloWorldApi
             Method: get
 
-  AddNameFunction:
-    Type: AWS::Serverless::Function
+  HelloWorldApi:
+    Type: AWS::Serverless::Api
     Properties:
-      CodeUri: hello-world/
-      Handler: app.addName
-      Runtime: nodejs8.10
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: Names
-      Events:
-        HelloWorld:
-          Type: Api
-          Properties:
-            Path: /add-name
-            Method: post
+      StageName: Prod
+      DefinitionBody:
+        swagger: "2.0"
+        x-amazon-apigateway-policy:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal: "*"
+              Action: execute-api:Invoke
+              Resource:
+                - arn:aws:execute-api:*:*:*/*/GET/hello
+              Condition:
+                IpAddress:
+                  aws:SourceIp:
+                    - 0.0.0.0
+        info:
+          version: "1.0"
+          title: "HelloWorld"
+        schemes:
+          - "https"
+        paths:
+          /hello:
+            get:
+              responses: {}
+              # For AWS Integration
+              x-amazon-apigateway-integration:
+                type: "aws_proxy"
+                httpMethod: "POST"
+                uri: !Sub "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${HelloWorldFunction.Arn}/invocations"
+                responses:
+                  default:
+                    statusCode: 200
 
-  GreetNamesFunction:
-    Type: AWS::Serverless::Function
+  DomainName:
+    Type: AWS::ApiGateway::DomainName
     Properties:
-      CodeUri: hello-world/
-      Handler: app.greetNames
-      Runtime: nodejs8.10
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: Names
-      Events:
-        HelloWorld:
-          Type: Api
-          Properties:
-            Path: /greet-names
-            Method: get
-    
-  NamesTable:
-    Type: AWS::Serverless::SimpleTable
+      DomainName: hello-world.nikmouz.dev
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      RegionalCertificateArn: arn:aws:acm:eu-west-1:005405328181:certificate/c346f805-c3aa-462b-a483-909112c10d64
+
+  BasePathMapping:
+    Type: AWS::ApiGateway::BasePathMapping
     Properties:
-      TableName: Names
-      PrimaryKey:
-        Name: id
-        Type: String
-      ProvisionedThroughput:
-        ReadCapacityUnits: 5
-        WriteCapacityUnits: 5
-      SSESpecification:
-        SSEEnabled: true
+        DomainName: !Ref DomainName
+        RestApiId: !Ref HelloWorldApi
+        Stage: Prod
+    DependsOn:
+      - HelloWorldFunction
+      - HelloWorldApi
+
+  WebsiteRecordSets:
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      HostedZoneName: nikmouz.dev.
+      RecordSets:
+        - Name: hello-world.nikmouz.dev
+          Type: A
+          AliasTarget:
+            HostedZoneId: !GetAtt 'DomainName.RegionalHostedZoneId'
+            DNSName: !GetAtt 'DomainName.RegionalDomainName'
 
 Outputs:
+  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
+  # Find out more about other implicit resources you can reference within SAM
+  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
   HelloWorldApi:
     Description: "API Gateway endpoint URL for Prod stage for Hello World function"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/"
-  GreetNamesApi:
-    Description: "API Gateway endpoint URL for Prod stage for Greet Names function"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/greet-names/"
-  AddNameApi:
-    Description: "API Gateway endpoint URL for Prod stage for Greet Names function"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/add-name/"
+    Value: !Sub "https://${HelloWorldApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/"
+  HelloWorldFunction:
+    Description: "Hello World Lambda Function ARN"
+    Value: !GetAtt HelloWorldFunction.Arn
+  HelloWorldFunctionIamRole:
+    Description: "Implicit IAM Role created for Hello World function"
+    Value: !GetAtt HelloWorldFunctionRole.Arn
